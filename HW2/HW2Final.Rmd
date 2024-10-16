@@ -56,8 +56,6 @@ library(reticulate)
 
 # Data Reading
 ```{r}
-setwd(dirname(getActiveDocumentContext()$path))
-
 # Reading in data
 trainingBin <- read.csv("insurance_t_bin.csv") 
 training <- read.csv("insurance_t.csv") 
@@ -175,4 +173,5 @@ accuracy <- round(mean(accDF$accuracy),4)
 accuracy
 ```
 
-Seeing as how the full variable tree outperforms both the logistic regression, and 
+Seeing as how the full variable tree outperforms both the logistic regression,
+and the model built on a smaller set of variables. The larger tree does not add too much complication 
