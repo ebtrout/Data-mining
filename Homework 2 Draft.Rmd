@@ -1,0 +1,232 @@
+---
+title: "Data Mining Hw2 Draft"
+author: "Blue Team 16"
+output:
+  pdf_document:
+    toc: true
+    toc_depth: 2
+    df_print: paged
+---
+```{r,include = F}
+library(rpart)
+library(tidyverse)
+library(rpart.plot)
+library(datasets)
+library(arules)
+library(arulesViz)
+library(ggplot2)
+library(dplyr)
+library(rpart)
+library(rpart.plot)
+library(TH.data)
+library(ISLR2)
+library(lattice)
+library(stats)
+library(rattle)
+library(RColorBrewer)
+library(caret)
+library(ROCR)
+library(tidyverse)  
+library(cluster)  
+library(factoextra) 
+library(gridExtra)
+library(NbClust)
+library(dendextend)
+library(class)
+library(ClustOfVar)
+library(gmodels)
+library(DescTools)
+library(ROCit)
+library(survival)
+library(MASS)
+library(kableExtra)
+library(partykit)
+library(dbscan)
+library(AmesHousing)
+library(conflicted)
+conflict_prefer("select", "dplyr")
+conflict_prefer("filter", "dplyr")
+conflict_prefer("prune","rpart")
+library(rstudioapi)
+library(reticulate)
+```
+
+
+# Data Reading
+```{r}
+setwd(dirname(getActiveDocumentContext()$path))
+
+# Reading in data
+trainingBin <- read.csv("insurance_t_bin.csv") 
+training <- read.csv("insurance_t.csv") 
+
+validationBin <- read.csv("insurance_v_bin.csv") 
+validation <- read.csv("insurance_v.csv") 
+
+# Fixing Separations and NAs
+trainingBin <- trainingBin %>% mutate(across(everything(), ~ as.character(.x))) %>% 
+  mutate(across(everything(), ~ replace_na(.x,"M"))) %>% 
+  mutate(across(everything(), ~ as.factor(.x)))
+
+validationBin <- validationBin %>% mutate(across(everything(), ~ as.character(.x))) %>% 
+  mutate(across(everything(), ~ replace_na(.x,"M"))) %>% 
+  mutate(across(everything(), ~ as.factor(.x)))
+```
+
+# Old Logistic Regression Model
+```{r}
+finalModel <- glm(INS ~ NSF + MTG + INV + ILSBAL_BIN + IRA + DDA + TELLER_BIN + CC + ATMAMT_BIN + CHECKS_BIN + MMBAL_BIN + CDBAL_BIN + DDABAL_BIN + SAVBAL_BIN + DDA:IRA,family = binomial(link = "logit"),data = trainingBin)
+```
+
+
+This model was derived back in LRHW3 by backward selecting with p-value criterion. I know they said to use the non-binned dataset, but I think it should be okay for the Logistic Regression model we are comparing to be built on the binned set. If it seems like an issue, a new LR can always be built on the non binned set and then backward selected.  
+  
+  If anyone got a better model than this in LRHW3 let me know, but I feel like the modeling portion of that HW was pretty cut and dry.
+
+# Decision Tree Models
+```{r}
+# Making a large tree to prune later. The values I selected are what I came to after playing around with various models.
+
+# Only LR variables
+lrTree <- rpart(INS ~ NSF + MTG + INV + ILSBAL + IRA + DDA + TELLER + CC + ATMAMT + CHECKS + MMBAL + CDBAL + DDABAL + SAVBAL, data=training, method='class',parms = list(split="gini"),
+                    control = rpart.control(minsplit = 30, cp = .001, maxdepth = 6))
+# All variables
+bigTree <- rpart(INS ~ ., data=training, method='class',parms = list(split="gini"),
+                       control = rpart.control(minsplit = 30, cp = .001, maxdepth = 6))
+```
+
+
+# Pruning
+
+## LR Subset model
+```{r}
+printcp(lrTree)
+```
+Only want to include first 6 layers based on oneSE
+```{r}
+lrTree <- prune(lrTree,cp=0.0049692)
+```
+
+## Big Tree
+
+```{r}
+printcp(bigTree)
+```
+
+Only want first 10 layers
+
+```{r}
+bigTree <- prune(bigTree,cp=0.0020562)
+```
+
+
+# Predicting 
+
+## Predictions and Fitted Values
+```{r}
+probLRTree <- predict(lrTree,validation,type = "prob")
+probBigTree <- predict(bigTree,validation,type = "prob")
+
+predLRTree <- predict(lrTree,validation,type = "class")
+predBigTree <- predict(bigTree,validation,type = "class")
+
+
+fittedLRTree <- predict(lrTree,training,type = "prob")
+fittedBigTree <- predict(bigTree,training,type = "prob")
+```
+
+## Accuracy scores
+```{r}
+lrAccuracy <- (length((which(predLRTree == validation$INS))) / nrow(validation))
+
+bigAccuracy <- (length((which(predBigTree == validation$INS))) / nrow(validation))
+
+lrAccuracy
+bigAccuracy
+```
+Not huge difference in accuracy, going to use the subset variable model going forward.
+
+## ROC Curve
+```{r}
+roc <- rocit(probLRTree[,2],validation$INS)
+
+ks <- ksplot(roc)
+ksStat <- ks$`KS stat`;ksStat
+
+cutoff <- ks$`KS Cutoff`;cutoff
+```
+
+```{r}
+#Creating the grid of FPR to TPR
+grid = seq(0, 100, by=.1)
+
+roc$FPR
+
+# Creating a matrix for plotting
+rocDF<- as.data.frame(cbind(roc$FPR,roc$TPR,grid))
+colnames(rocDF) <- c("FPR","TPR","grid")
+  # Optimal cutoff value
+optimal_cutoff <- cutoff * 100
+
+# Plotting
+ggplot(data = rocDF) + 
+  geom_line(mapping = aes(x = 100 * FPR, y = 100 * TPR)) + 
+  geom_line(mapping = aes(x = grid, y = grid), linetype = "dotted") + 
+  geom_point(aes(x = optimal_cutoff, y = 80.75),color = "red", size = 3) +  
+  geom_text(aes(x = optimal_cutoff,y = 83.5),color = "black", label = "Optimal Cutoff",vjust = -2.2) + 
+  theme_classic() +
+  labs(
+    title = "ROC Curve",
+    subtitle = paste0("AUC = ", round(roc$AUC, 4), "\n\n"),
+    y = "TPR (%)",
+    x = "FPR (%)"
+  ) + 
+  theme(axis.title.y = element_text(angle = 0, vjust = 0.5))
+```
+
+
+## Using cutoff for predictions
+```{r}
+# Create prediction dataframe
+predictions <- data.frame(prob0 = probLRTree[,1],prob1 = probLRTree[,2]) %>% 
+  mutate(pred = if_else(prob1 > cutoff,1,0))
+
+# Accuracy based on ks stat cutoff
+ksAccuracy <- (length((which(predictions$pred == validation$INS))) / nrow(validation))
+
+ksAccuracy
+```
+Same accuracy, wow.  
+A little confused if I am doing this 100% correctly tho. Since with a decision tree we are outputting 2 predicted probabilities per observation, I am not sure which one to use. I followed the notes and used the prob1 column but not sure why.
+
+
+# Logistic Regression Accuracy
+```{r}
+# Taken from logistic regression ROC curve
+cutoff <-  0.2970672
+pred <- predict(finalModel,validationBin,type = "response")
+pred <- data.frame(pred = pred) %>% mutate(pred = if_else(pred > cutoff,1,0))
+pred <- pred$pred
+
+# Create accuracy vector
+accDF <- data.frame(pred = pred, observed = validation$INS) %>% mutate(accuracy = if_else(pred == observed,1,0))
+
+accuracy <- round(mean(accDF$accuracy),4)
+# Accuracy 
+accuracy
+```
+
+The decision tree performs a little bit better! 
+
+# Plotting Decision Tree
+```{r}
+rpart.plot(lrTree,roundint = F)
+
+rpart.plot(bigTree)
+
+```
+
+
+Surprised to see that the tree isn't very large, and performs so well!  
+Want to do some variable importance tests. The balance variables seem to be highly impactful compared to all other predictors present in the dataset.
+
