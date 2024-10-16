@@ -2,9 +2,10 @@
 title: "Data Mining HW2 Final Code"
 author: "Blue Team 16"
 output:
-  pdf_document:
+  html_document:
     toc: true
     toc_depth: 2
+    toc_float: true
     df_print: paged
 ---
 
