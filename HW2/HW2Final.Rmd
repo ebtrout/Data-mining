@@ -173,5 +173,7 @@ accuracy <- round(mean(accDF$accuracy),4)
 accuracy
 ```
 
-Seeing as how the full variable tree outperforms both the logistic regression,
-and the model built on a smaller set of variables. The larger tree does not add too much complication 
+Seeing as how the full variable tree outperforms both the logistic regression
+and the model built on a smaller set of variables, we should go forward with the 
+full variable model tree as it maximizes accuracy with only a slight tradeoff of 
+complexity.
